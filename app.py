@@ -362,4 +362,4 @@ elif page == 'Export CSV':
 
 # Footer
 st.write('---')
-st.caption('This is a simple demo. For production use, upgrade security, and consider external DB.')')
+st.caption('Sometime your result will not align with your expectation, but your effort should be such that everyone should know how capable you are!!')
