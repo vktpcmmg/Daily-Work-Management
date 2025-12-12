@@ -125,8 +125,8 @@ def get_pending_tasks(user_id: int):
 def change_task_status(task_id: int, new_status: str):
     conn = get_conn()
     cur = conn.cursor()
-    ist = pytz.timezone('Asia/Kolkata')
-    now = datetime.now(ist).strftime('%Y-%m-%d %H:%M:%S')
+    now = datetime.now().astimezone().strftime('%Y-%m-%d %H:%M:%S')
+
 
     if new_status == 'pending':
         pending_from = now
