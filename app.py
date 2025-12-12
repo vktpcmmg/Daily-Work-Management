@@ -5,19 +5,20 @@ Save this file as `app.py` and run `streamlit run app.py`.
 Features:
 - User registration and login (local sqlite, passwords hashed)
 - Add daily tasks with title, description, optional time
-- Mark tasks as Done / Pending
+- Mark tasks as Done / Pending with a single click
 - Pending bucket shows tasks still pending with the datetime they became pending
 - History view shows tasks per day (Done & Pending at end of day)
 - Export history as CSV
 
 Notes:
-- For demo/local use only. For production, use proper password hashing (bcrypt), email verification, HTTPS, etc.
+- For demo/local use only. For production, use proper password hashing (bcrypt), email verification, HTTPS, and an external DB.
 
 """
 
 import streamlit as st
 import sqlite3
 from datetime import datetime, date
+from zoneinfo import ZoneInfo
 import hashlib
 import pandas as pd
 import os
@@ -27,10 +28,12 @@ import os
 # ----------------------------
 DB_PATH = "tasks.db"
 
+
 def get_conn():
     conn = sqlite3.connect(DB_PATH, check_same_thread=False)
     conn.row_factory = sqlite3.Row
     return conn
+
 
 def init_db():
     conn = get_conn()
@@ -70,16 +73,18 @@ def init_db():
 def hash_password(password: str) -> str:
     return hashlib.sha256(password.encode()).hexdigest()
 
+
 def register_user(username: str, password: str) -> (bool, str):
     conn = get_conn()
     cur = conn.cursor()
     try:
         cur.execute('INSERT INTO users (username, password_hash, created_at) VALUES (?, ?, ?)',
-                    (username, hash_password(password), datetime.now().astimezone().strftime('%Y-%m-%d %H:%M:%S')))
+                    (username, hash_password(password), now_ist()))
         conn.commit()
         return True, "Registered successfully"
     except sqlite3.IntegrityError:
         return False, "Username already taken"
+
 
 def login_user(username: str, password: str) -> (bool, dict):
     conn = get_conn()
@@ -94,17 +99,39 @@ def login_user(username: str, password: str) -> (bool, dict):
     return True, user
 
 # ----------------------------
+# Time helpers (IST)
+# ----------------------------
+
+def now_ist():
+    """Return current time in IST as a string without milliseconds."""
+    ist = ZoneInfo('Asia/Kolkata')
+    return datetime.now(ist).strftime('%Y-%m-%d %H:%M:%S')
+
+
+def format_display(dt_str: str) -> str:
+    """Format stored IST datetime string 'YYYY-MM-DD HH:MM:SS' to display like 'DD-MM-YYYY hh:mm AM/PM'."""
+    try:
+        ist = ZoneInfo('Asia/Kolkata')
+        dt = datetime.strptime(dt_str, '%Y-%m-%d %H:%M:%S')
+        # attach IST tzinfo (stored values are in IST already)
+        dt = dt.replace(tzinfo=ist)
+        return dt.strftime('%d-%m-%Y %I:%M %p')
+    except Exception:
+        return dt_str
+
+# ----------------------------
 # Task helpers
 # ----------------------------
 
 def add_task(user_id: int, title: str, description: str, task_date: str, task_time: str | None):
     conn = get_conn()
     cur = conn.cursor()
-    now = datetime.now().astimezone().strftime('%Y-%m-%d %H:%M:%S')
+    now = now_ist()
     cur.execute('''INSERT INTO tasks (user_id, title, description, created_at, task_date, task_time, status, status_changed_at, pending_from)
                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
                 ''', (user_id, title, description, now, task_date, task_time or '', 'pending', now, now))
     conn.commit()
+
 
 def get_tasks_for_date(user_id: int, task_date: str):
     conn = get_conn()
@@ -112,16 +139,18 @@ def get_tasks_for_date(user_id: int, task_date: str):
     cur.execute('SELECT * FROM tasks WHERE user_id = ? AND task_date = ? ORDER BY id', (user_id, task_date))
     return [dict(r) for r in cur.fetchall()]
 
+
 def get_pending_tasks(user_id: int):
     conn = get_conn()
     cur = conn.cursor()
     cur.execute("SELECT * FROM tasks WHERE user_id = ? AND status = 'pending' ORDER BY task_date, task_time", (user_id,))
     return [dict(r) for r in cur.fetchall()]
 
+
 def change_task_status(task_id: int, new_status: str):
     conn = get_conn()
     cur = conn.cursor()
-    now = datetime.now().astimezone().strftime('%Y-%m-%d %H:%M:%S')
+    now = now_ist()
     if new_status == 'pending':
         pending_from = now
     else:
@@ -129,6 +158,7 @@ def change_task_status(task_id: int, new_status: str):
     cur.execute('UPDATE tasks SET status = ?, status_changed_at = ?, pending_from = ? WHERE id = ?',
                 (new_status, now, pending_from, task_id))
     conn.commit()
+
 
 def get_history(user_id: int, start_date: str | None = None, end_date: str | None = None):
     conn = get_conn()
@@ -156,7 +186,20 @@ init_db()
 if 'user' not in st.session_state:
     st.session_state.user = None
 
+# small refresh toggle used by callbacks
+if 'refresh' not in st.session_state:
+    st.session_state.refresh = False
+
 st.title("Daily Work Management System")
+
+# Helper callbacks to update status and force rerender via session_state toggle
+def _mark_done_callback(task_id):
+    change_task_status(task_id, 'done')
+    st.session_state['refresh'] = not st.session_state.get('refresh', False)
+
+def _mark_pending_callback(task_id):
+    change_task_status(task_id, 'pending')
+    st.session_state['refresh'] = not st.session_state.get('refresh', False)
 
 # Sidebar: auth and navigation
 with st.sidebar:
@@ -193,7 +236,9 @@ if st.session_state.user is None:
 user = st.session_state.user
 user_id = user['id']
 
-# ----------------------------\n# Pages\n# ----------------------------\n\n# Helper callbacks to update status and force rerender via session_state toggle\ndef _mark_done_callback(task_id):\n    change_task_status(task_id, 'done')\n    st.session_state['refresh'] = not st.session_state.get('refresh', False)\n\ndef _mark_pending_callback(task_id):\n    change_task_status(task_id, 'pending')\n    st.session_state['refresh'] = not st.session_state.get('refresh', False)\n\n
+# ----------------------------
+# Pages
+# ----------------------------
 
 if page == 'Add Task':
     st.header("Add Task")
@@ -227,14 +272,23 @@ elif page == 'Today':
             with cols[0]:
                 st.write(f"Status: **{t['status']}**")
             with cols[1]:
-                if t['status'] == 'pending':\n                    st.button('Mark Done', key=f"done_{t['id']}", on_click=_mark_done_callback, args=(t['id'],))\n                    else:\n                    st.button('Mark Pending', key=f"pending_{t['id']}", on_click=_mark_pending_callback, args=(t['id'],))\n                    with cols[2]:
-                # Format created_at for display
-                try:
-                    added_dt = datetime.fromisoformat(t['created_at'])
-                    added_str = added_dt.strftime('%d-%m-%Y %I:%M %p')
-                except:
-                    added_str = t['created_at']
-
+                if t['status'] == 'pending':
+                    st.button(
+                        'Mark Done',
+                        key=f"done_{t['id']}",
+                        on_click=_mark_done_callback,
+                        args=(t['id'],)
+                    )
+                else:
+                    st.button(
+                        'Mark Pending',
+                        key=f"pending_{t['id']}",
+                        on_click=_mark_pending_callback,
+                        args=(t['id'],)
+                    )
+            with cols[2]:
+                # Format created_at for display (IST)
+                added_str = format_display(t['created_at'])
                 st.write(f"Added: {added_str}")
                 st.write(f"Time: {t['task_time']}")
 
@@ -246,20 +300,29 @@ elif page == 'Pending Bucket':
     else:
         for p in pend:
             pending_from = p['pending_from'] or p['created_at']
-            # calculate duration in human readable
+            # calculate duration in human readable (based on IST stored time)
             try:
-                dt = datetime.fromisoformat(pending_from)
-                delta = datetime.utcnow() - dt
+                ist = ZoneInfo('Asia/Kolkata')
+                dt = datetime.strptime(pending_from, '%Y-%m-%d %H:%M:%S')
+                dt = dt.replace(tzinfo=ist)
+                delta = datetime.now(ist) - dt
                 days = delta.days
                 hours = delta.seconds // 3600
                 mins = (delta.seconds % 3600) // 60
                 since = f"{days}d {hours}h {mins}m ago"
             except Exception:
                 since = pending_from
-            st.markdown(f"**{p['title']}** — {p['task_date']} {p['task_time']} — Pending since: {since}")
+            st.markdown(f"**{p['title']}** — {p['task_date']} {p['task_time']} — Pending since: {format_display(pending_from)} ({since})")
             if p['description']:
                 st.write(p['description'])
-            st.button('Mark Done', key=f"pend_done_{p['id']}", on_click=_mark_done_callback, args=(p['id'],))\n                elif page == 'History':
+            st.button(
+                'Mark Done',
+                key=f"pend_done_{p['id']}",
+                on_click=_mark_done_callback,
+                args=(p['id'],)
+            )
+
+elif page == 'History':
     st.header('History')
     col1, col2 = st.columns(2)
     with col1:
@@ -271,8 +334,11 @@ elif page == 'Pending Bucket':
         st.info('No history in this range')
     else:
         df = pd.DataFrame(hist)
-        # show selected columns
-        display_df = df[['task_date','task_time','title','description','status','status_changed_at']]
+        # format created_at and status_changed_at for display
+        df['created_at_disp'] = df['created_at'].apply(format_display)
+        df['status_changed_at_disp'] = df['status_changed_at'].apply(format_display)
+        display_df = df[['task_date','task_time','title','description','status','created_at_disp','status_changed_at_disp']]
+        display_df = display_df.rename(columns={'created_at_disp':'created_at','status_changed_at_disp':'status_changed_at'})
         st.dataframe(display_df)
         if st.button('Show day-wise summary'):
             summary = display_df.groupby('task_date').agg(
@@ -296,4 +362,4 @@ elif page == 'Export CSV':
 
 # Footer
 st.write('---')
-st.caption('This is a simple demo. For production use, upgrade security, and consider external DB.')
+st.caption('This is a simple demo. For production use, upgrade security, and consider external DB.')')
