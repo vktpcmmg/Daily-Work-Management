@@ -179,6 +179,19 @@ def get_history(user_id: int, start_date: str | None = None, end_date: str | Non
 # UI
 # ----------------------------
 
+# Delete helpers
+def delete_task(task_id: int):
+    conn = get_conn()
+    cur = conn.cursor()
+    cur.execute("DELETE FROM tasks WHERE id = ?", (task_id,))
+    conn.commit()
+
+def _delete_task_callback(task_id):
+    delete_task(task_id)
+    st.session_state['refresh'] = not st.session_state.get('refresh', False)
+
+
+
 st.set_page_config(page_title="Daily Work Management", page_icon="🗂️")
 init_db()
 
@@ -286,6 +299,12 @@ elif page == 'Today':
                         on_click=_mark_pending_callback,
                         args=(t['id'],)
                     )
+                    st.button(
+                        'Delete',
+                        key=f"delete_{t['id']}",
+                        on_click=_delete_task_callback,
+                        args=(t['id'],)
+                    )
             with cols[2]:
                 # Format created_at for display (IST)
                 added_str = format_display(t['created_at'])
@@ -321,6 +340,12 @@ elif page == 'Pending Bucket':
                 on_click=_mark_done_callback,
                 args=(p['id'],)
             )
+            st.button(
+                'Delete',
+                key=f"pend_delete_{p['id']}",
+                on_click=_delete_task_callback,
+                args=(p['id'],)
+            )
 
 elif page == 'History':
     st.header('History')
@@ -340,6 +365,18 @@ elif page == 'History':
         display_df = df[['task_date','task_time','title','description','status','created_at_disp','status_changed_at_disp']]
         display_df = display_df.rename(columns={'created_at_disp':'created_at','status_changed_at_disp':'status_changed_at'})
         st.dataframe(display_df)
+        # Add delete from history control
+        try:
+            options = [f"{r['id']} - {r['title']} ({r['task_date']})" for r in hist]
+            sel = st.selectbox('Select a task to delete (from history)', options, key='hist_delete_sel')
+            if st.button('Delete selected task from history'):
+                # parse id from selection
+                sel_id = int(sel.split(' - ')[0])
+                delete_task(sel_id)
+                st.success('Task deleted')
+                st.session_state['refresh'] = not st.session_state.get('refresh', False)
+        except Exception:
+            pass
         if st.button('Show day-wise summary'):
             summary = display_df.groupby('task_date').agg(
                 total_tasks=('title','count'),
@@ -362,4 +399,4 @@ elif page == 'Export CSV':
 
 # Footer
 st.write('---')
-st.caption('Sometime your result will not align with your expectation, but your effort should be such that everyone should know how capable you are!!')
+st.caption('This is a simple demo. For production use, upgrade security, and consider external DB.')')
