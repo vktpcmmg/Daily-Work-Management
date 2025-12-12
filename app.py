@@ -75,7 +75,7 @@ def register_user(username: str, password: str) -> (bool, str):
     cur = conn.cursor()
     try:
         cur.execute('INSERT INTO users (username, password_hash, created_at) VALUES (?, ?, ?)',
-                    (username, hash_password(password), datetime.now().astimezone().strftime('%Y-%m-%d %H:%M:%S')()))
+                    (username, hash_password(password), datetime.now().astimezone().strftime('%Y-%m-%d %H:%M:%S')))
         conn.commit()
         return True, "Registered successfully"
     except sqlite3.IntegrityError:
@@ -100,7 +100,7 @@ def login_user(username: str, password: str) -> (bool, dict):
 def add_task(user_id: int, title: str, description: str, task_date: str, task_time: str | None):
     conn = get_conn()
     cur = conn.cursor()
-    now = datetime.now().astimezone().strftime('%Y-%m-%d %H:%M:%S')()
+    now = datetime.now().astimezone().strftime('%Y-%m-%d %H:%M:%S')
     cur.execute('''INSERT INTO tasks (user_id, title, description, created_at, task_date, task_time, status, status_changed_at, pending_from)
                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
                 ''', (user_id, title, description, now, task_date, task_time or '', 'pending', now, now))
@@ -121,7 +121,7 @@ def get_pending_tasks(user_id: int):
 def change_task_status(task_id: int, new_status: str):
     conn = get_conn()
     cur = conn.cursor()
-    now = datetime.now().astimezone().strftime('%Y-%m-%d %H:%M:%S')()
+    now = datetime.now().astimezone().strftime('%Y-%m-%d %H:%M:%S')
     if new_status == 'pending':
         pending_from = now
     else:
@@ -240,12 +240,12 @@ elif page == 'Today':
                         st.experimental_rerun()
             with cols[2]:
                 # Format created_at for display
-                try:
-                   added_dt = datetime.fromisoformat(t['created_at'])
-                   added_str = added_dt.strftime('%d-%m-%Y %I:%M %p')
-                except:
-                   added_str = t['created_at']
-                st.write(f"Added: {added_str}")
+            try:
+                added_dt = datetime.fromisoformat(t['created_at'])
+                added_str = added_dt.strftime('%d-%m-%Y %I:%M %p')
+            except:
+                added_str = t['created_at']
+            st.write(f"Added: {added_str}")
                 st.write(f"Time: {t['task_time']}")
 
 elif page == 'Pending Bucket':
