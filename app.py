@@ -193,9 +193,7 @@ if st.session_state.user is None:
 user = st.session_state.user
 user_id = user['id']
 
-# ----------------------------
-# Pages
-# ----------------------------
+# ----------------------------\n# Pages\n# ----------------------------\n\n# Helper callbacks to update status and force rerender via session_state toggle\ndef _mark_done_callback(task_id):\n    change_task_status(task_id, 'done')\n    st.session_state['refresh'] = not st.session_state.get('refresh', False)\n\ndef _mark_pending_callback(task_id):\n    change_task_status(task_id, 'pending')\n    st.session_state['refresh'] = not st.session_state.get('refresh', False)\n\n
 
 if page == 'Add Task':
     st.header("Add Task")
@@ -229,13 +227,7 @@ elif page == 'Today':
             with cols[0]:
                 st.write(f"Status: **{t['status']}**")
             with cols[1]:
-                if t['status'] == 'pending':
-                    if st.button('Mark Done', key=f"done_{t['id']}"):
-                        change_task_status(t['id'], 'done')
-                else:
-                    if st.button('Mark Pending', key=f"pending_{t['id']}"):
-                        change_task_status(t['id'], 'pending')
-            with cols[2]:
+                if t['status'] == 'pending':\n                    st.button('Mark Done', key=f"done_{t['id']}", on_click=_mark_done_callback, args=(t['id'],))\n                    else:\n                    st.button('Mark Pending', key=f"pending_{t['id']}", on_click=_mark_pending_callback, args=(t['id'],))\n                    with cols[2]:
                 # Format created_at for display
                 try:
                     added_dt = datetime.fromisoformat(t['created_at'])
@@ -267,10 +259,7 @@ elif page == 'Pending Bucket':
             st.markdown(f"**{p['title']}** — {p['task_date']} {p['task_time']} — Pending since: {since}")
             if p['description']:
                 st.write(p['description'])
-            if st.button('Mark Done', key=f"pend_done_{p['id']}"):
-                change_task_status(p['id'], 'done')
-
-elif page == 'History':
+            st.button('Mark Done', key=f"pend_done_{p['id']}", on_click=_mark_done_callback, args=(p['id'],))\n                elif page == 'History':
     st.header('History')
     col1, col2 = st.columns(2)
     with col1:
