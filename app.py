@@ -239,7 +239,13 @@ elif page == 'Today':
                         change_task_status(t['id'], 'pending')
                         st.experimental_rerun()
             with cols[2]:
-                st.write(f"Added: {t['created_at']}")
+                # Format created_at for display
+            try:
+                added_dt = datetime.fromisoformat(t['created_at'])
+                added_str = added_dt.strftime('%d-%m-%Y %I:%M %p')
+            except:
+                added_str = t['created_at']
+            st.write(f"Added: {added_str}")
                 st.write(f"Time: {t['task_time']}")
 
 elif page == 'Pending Bucket':
