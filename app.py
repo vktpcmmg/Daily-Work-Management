@@ -21,8 +21,6 @@ from datetime import datetime, date
 import hashlib
 import pandas as pd
 import os
-import pytz
-
 
 # ----------------------------
 # Database helpers
@@ -102,9 +100,7 @@ def login_user(username: str, password: str) -> (bool, dict):
 def add_task(user_id: int, title: str, description: str, task_date: str, task_time: str | None):
     conn = get_conn()
     cur = conn.cursor()
-    ist = pytz.timezone('Asia/Kolkata')
-    now = datetime.now(ist).strftime('%Y-%m-%d %H:%M:%S')
-
+    now = datetime.now().astimezone().strftime('%Y-%m-%d %H:%M:%S')
     cur.execute('''INSERT INTO tasks (user_id, title, description, created_at, task_date, task_time, status, status_changed_at, pending_from)
                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
                 ''', (user_id, title, description, now, task_date, task_time or '', 'pending', now, now))
@@ -126,8 +122,6 @@ def change_task_status(task_id: int, new_status: str):
     conn = get_conn()
     cur = conn.cursor()
     now = datetime.now().astimezone().strftime('%Y-%m-%d %H:%M:%S')
-
-
     if new_status == 'pending':
         pending_from = now
     else:
@@ -187,7 +181,6 @@ with st.sidebar:
         st.write(f"Logged in as: **{st.session_state.user['username']}**")
         if st.button("Logout"):
             st.session_state.user = None
-            st.experimental_rerun()
 
     st.header("Navigate")
     page = st.selectbox("Go to", ["Add Task", "Today", "Pending Bucket", "History", "Export CSV"]) 
@@ -239,11 +232,9 @@ elif page == 'Today':
                 if t['status'] == 'pending':
                     if st.button('Mark Done', key=f"done_{t['id']}"):
                         change_task_status(t['id'], 'done')
-                        st.experimental_rerun()
                 else:
                     if st.button('Mark Pending', key=f"pending_{t['id']}"):
                         change_task_status(t['id'], 'pending')
-                        st.experimental_rerun()
             with cols[2]:
                 # Format created_at for display
                 try:
@@ -278,7 +269,6 @@ elif page == 'Pending Bucket':
                 st.write(p['description'])
             if st.button('Mark Done', key=f"pend_done_{p['id']}"):
                 change_task_status(p['id'], 'done')
-                st.experimental_rerun()
 
 elif page == 'History':
     st.header('History')
