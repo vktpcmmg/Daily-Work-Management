@@ -278,7 +278,15 @@ elif page == 'Today':
         st.info('No tasks for this date')
     else:
         for t in tasks:
-            st.markdown(f"**{t['title']}**  ")
+            # Color coding
+            bg = '#d4edda' if t['status']=='done' else '#f8d7da'
+            st.markdown(f"""
+            <div style='background:{bg}; padding:10px; border-radius:10px; margin-bottom:10px;'>
+            <b>{t['title']}</b><br>
+            {t['description'] if t['description'] else ''}
+            </div>
+            """, unsafe_allow_html=True)
+            (f"**{t['title']}**  ")
             if t['description']:
                 st.write(t['description'])
             cols = st.columns([1,1,4])
@@ -318,10 +326,10 @@ elif page == 'Pending Bucket':
         st.success('No pending tasks. Nice!')
     else:
         for p in pend:
+            bg = '#d4edda' if p['status']=='done' else '#f8d7da'
+            ist = ZoneInfo('Asia/Kolkata')
             pending_from = p['pending_from'] or p['created_at']
-            # calculate duration in human readable (based on IST stored time)
             try:
-                ist = ZoneInfo('Asia/Kolkata')
                 dt = datetime.strptime(pending_from, '%Y-%m-%d %H:%M:%S')
                 dt = dt.replace(tzinfo=ist)
                 delta = datetime.now(ist) - dt
@@ -331,21 +339,32 @@ elif page == 'Pending Bucket':
                 since = f"{days}d {hours}h {mins}m ago"
             except Exception:
                 since = pending_from
-            st.markdown(f"**{p['title']}** — {p['task_date']} {p['task_time']} — Pending since: {format_display(pending_from)} ({since})")
-            if p['description']:
-                st.write(p['description'])
-            st.button(
-                'Mark Done',
-                key=f"pend_done_{p['id']}",
-                on_click=_mark_done_callback,
-                args=(p['id'],)
-            )
-            st.button(
-                'Delete',
-                key=f"pend_delete_{p['id']}",
-                on_click=_delete_task_callback,
-                args=(p['id'],)
-            )
+
+            # Card HTML
+            st.markdown(f"""
+            <div style='background:{bg}; padding:12px; border-radius:10px; margin-bottom:12px; box-shadow: 0 1px 3px rgba(0,0,0,0.08);'>
+              <div style='display:flex; justify-content:space-between; align-items:center;'>
+                <div>
+                  <strong style='font-size:16px;'>{p['title']}</strong><br>
+                  <small>{p['task_date']} {p['task_time']}</small>
+                </div>
+                <div style='text-align:right;'>
+                  <small>Pending since:<br>{format_display(pending_from)}</small>
+                </div>
+              </div>
+              <div style='margin-top:8px;'>
+                {p['description'] if p['description'] else ''}
+              </div>
+            </div>
+            """, unsafe_allow_html=True)
+
+            cols = st.columns([1,1,6])
+            with cols[0]:
+                st.button('Mark Done', key=f"pend_done_{p['id']}", on_click=_mark_done_callback, args=(p['id'],))
+            with cols[1]:
+                st.button('Delete', key=f"pend_delete_{p['id']}", on_click=_delete_task_callback, args=(p['id'],))
+            with cols[2]:
+                st.write('')
 
 elif page == 'History':
     st.header('History')
@@ -358,27 +377,42 @@ elif page == 'History':
     if not hist:
         st.info('No history in this range')
     else:
-        df = pd.DataFrame(hist)
-        # format created_at and status_changed_at for display
-        df['created_at_disp'] = df['created_at'].apply(format_display)
-        df['status_changed_at_disp'] = df['status_changed_at'].apply(format_display)
-        display_df = df[['task_date','task_time','title','description','status','created_at_disp','status_changed_at_disp']]
-        display_df = display_df.rename(columns={'created_at_disp':'created_at','status_changed_at_disp':'status_changed_at'})
-        st.dataframe(display_df)
-        # Add delete from history control
-        try:
-            options = [f"{r['id']} - {r['title']} ({r['task_date']})" for r in hist]
-            sel = st.selectbox('Select a task to delete (from history)', options, key='hist_delete_sel')
-            if st.button('Delete selected task from history'):
-                # parse id from selection
-                sel_id = int(sel.split(' - ')[0])
-                delete_task(sel_id)
-                st.success('Task deleted')
-                st.session_state['refresh'] = not st.session_state.get('refresh', False)
-        except Exception:
-            pass
+        # Show day-wise grouped cards
+        grouped = {}
+        for r in hist:
+            grouped.setdefault(r['task_date'], []).append(r)
+        for day in sorted(grouped.keys(), reverse=True):
+            st.subheader(day)
+            for r in grouped[day]:
+                bg = '#d4edda' if r['status']=='done' else '#f8d7da'
+                st.markdown(f"""
+                <div style='background:{bg}; padding:12px; border-radius:10px; margin-bottom:10px; box-shadow: 0 1px 3px rgba(0,0,0,0.08);'>
+                  <div style='display:flex; justify-content:space-between; align-items:center;'>
+                    <div>
+                      <strong style='font-size:15px;'>{r['title']}</strong><br>
+                      <small>{r['description'] if r['description'] else ''}</small>
+                    </div>
+                    <div style='text-align:right;'>
+                      <small>Added: {format_display(r['created_at'])}<br>Status changed: {format_display(r['status_changed_at'])}</small>
+                    </div>
+                  </div>
+                </div>
+                """, unsafe_allow_html=True)
+                cols = st.columns([1,1,6])
+                with cols[0]:
+                    if r['status']=='pending':
+                        st.button('Mark Done', key=f"hist_done_{r['id']}", on_click=_mark_done_callback, args=(r['id'],))
+                    else:
+                        st.button('Mark Pending', key=f"hist_pending_{r['id']}", on_click=_mark_pending_callback, args=(r['id'],))
+                with cols[1]:
+                    st.button('Delete', key=f"hist_delete_{r['id']}", on_click=_delete_task_callback, args=(r['id'],))
+                with cols[2]:
+                    st.write('')
+
+        # day-wise summary
         if st.button('Show day-wise summary'):
-            summary = display_df.groupby('task_date').agg(
+            df = pd.DataFrame(hist)
+            summary = df.groupby('task_date').agg(
                 total_tasks=('title','count'),
                 done=('status', lambda s: (s=='done').sum()),
                 pending=('status', lambda s: (s=='pending').sum())
@@ -399,4 +433,4 @@ elif page == 'Export CSV':
 
 # Footer
 st.write('---')
-st.caption('This is a simple demo. For production use, upgrade security, and consider external DB.')
+st.caption('Happy Day')')
